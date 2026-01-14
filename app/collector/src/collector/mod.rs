@@ -2,6 +2,8 @@ mod board;
 mod article;
 mod scheduler;
 mod entity;
+mod delete;
+mod delete_entity;
 
 use std::time::Duration;
 use once_cell::sync::Lazy;

@@ -6,7 +6,7 @@ mod collector;
 async fn main() -> std::io::Result<()> {
     let handle= collector::Collector::spawn_collectors().await.unwrap();
     println!("Collector started");
-
+    
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {}
         _ = async {
@@ -18,6 +18,6 @@ async fn main() -> std::io::Result<()> {
     println!("shutdown started");
     handle.shutdown().await.unwrap();
     println!("shutdown end");
-
+    
     Ok(())
 }

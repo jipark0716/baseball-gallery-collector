@@ -2,12 +2,12 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio_stream::StreamExt;
 use crate::collector::board::PageMeta;
-use crate::collector::{collect_article, collect_list, entity};
-use crate::collector::article::Article;
+use crate::collector::{collect_article, collect_list, delete, entity};
+use crate::collector::article::{Article, CollectArticleResult};
 
 pub struct Collector {
-    token: tokio::sync::oneshot::Sender<()>,
-    handle: tokio::task::JoinHandle<()>,
+    token: tokio::sync::broadcast::Sender<()>,
+    handle: tokio::task::JoinSet<()>,
 }
 
 #[async_trait::async_trait]
@@ -19,25 +19,45 @@ impl util::shutdown::AsyncShutdown for Collector {
             panic!("shutdown error");
         };
 
-        handle.await?;
+        handle.join_all().await;
 
         Ok(())
     }
 }
 
 impl Collector {
-    pub async fn spawn_collectors()
-    -> Result<impl util::shutdown::AsyncShutdown, Box<dyn std::error::Error>> {
-        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    pub async fn spawn_collectors() -> Result<impl util::shutdown::AsyncShutdown, Box<dyn std::error::Error>> {
+        let (tx, rx) = tokio::sync::broadcast::channel::<()>(2);
+        let mut handle = tokio::task::JoinSet::<()>::new();
 
         let (meta_sender, meta_receiver) = tokio::sync::mpsc::channel::<PageMeta>(10000);
         let (article_sender, article_receiver) = tokio::sync::mpsc::channel::<Article>(10000);
 
-        tokio::spawn(collect_metas_spawn(meta_sender, rx));
+        tokio::spawn(collect_metas_spawn(meta_sender, rx.resubscribe()));
         tokio::spawn(collect_articles_spawn(meta_receiver, article_sender));
-        let handle = tokio::spawn(collect_save_articles(article_receiver));
+        handle.spawn(collect_save_articles(article_receiver));
+        handle.spawn(collect_deleted_articles(rx));
 
         Ok(Self { token: tx, handle })
+    }
+}
+
+async fn collect_deleted_articles(mut rx: tokio::sync::broadcast::Receiver<()>) {
+    let mut interval = tokio::time::interval(Duration::from_secs(20));
+
+    loop {
+        tokio::select! {
+            _ = rx.recv() => {
+                println!("shutdown collect metas"); // todo logging
+                break;
+            }
+            _ = async {
+                interval.tick().await;
+                if let Some(err) = delete::collect_delete().await.err() {
+                    panic!("{:?}", err);
+                }
+            } => {}
+        }
     }
 }
 
@@ -69,17 +89,20 @@ async fn collect_articles_spawn(mut meta_receiver: tokio::sync::mpsc::Receiver<P
                 }
             };
 
-            article_sender.send(article).await.unwrap();
+            if let CollectArticleResult::Article(v) = article {
+                article_sender.send(v).await.unwrap();
+            }
         });
     }
 }
 
-async fn collect_metas_spawn(meta_sender: tokio::sync::mpsc::Sender<PageMeta>, mut rx: tokio::sync::oneshot::Receiver<()>) {
-    let mut after = 0;
+async fn collect_metas_spawn(meta_sender: tokio::sync::mpsc::Sender<PageMeta>, mut rx: tokio::sync::broadcast::Receiver<()>) {
+    let mut after = entity::get_last_id().await.unwrap_or(0);
+    println!("collect start after id: {after}");
     let mut interval = tokio::time::interval(Duration::from_secs(1));
     loop {
         tokio::select! {
-            _ = & mut rx => {
+            _ = rx.recv() => {
                 println!("shutdown collect metas"); // todo logging
                 break;
             }
@@ -93,6 +116,8 @@ async fn collect_metas_spawn(meta_sender: tokio::sync::mpsc::Sender<PageMeta>, m
                 };
 
                 let len = metas.iter().count();
+                if len == 0 { return; }
+
                 println!("collect meta {len}");
                 for meta in metas {
                     meta_sender.send(meta).await.unwrap();

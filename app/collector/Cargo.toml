@@ -16,3 +16,5 @@ async-trait = "0.1.89"
 tokio-stream = "0.1.18"
 clickhouse = { version = "0.14.1", features = ["uuid", "time", "chrono"]}
 serde = { version = "1", features = ["derive"] }
+futures = "0.3.31"
+anyhow = "1.0.100"
