@@ -4,7 +4,7 @@ use crate::collector::HTTP_CLIENT;
 
 #[derive(Debug)]
 pub struct PageMeta {
-    pub number: String,
+    pub id: u64,
     pub title: String,
     pub has_image: bool,
 }
@@ -34,7 +34,7 @@ pub async fn collect_list() -> Result<Vec<PageMeta>, Box<dyn std::error::Error>>
         let Some(number_el) = number_sl else { continue; };
 
         let meta = PageMeta {
-            number : number_el.text().collect::<String>(),
+            id: number_el.text().collect::<String>().parse::<u64>()?,
             title: link_el.text().collect::<String>().replace("\n", "").replace("\t", ""),
             has_image: has_image_sl != None,
         };

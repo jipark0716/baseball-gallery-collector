@@ -1,5 +1,6 @@
 mod board;
 mod article;
+mod scheduler;
 
 use std::time::Duration;
 use once_cell::sync::Lazy;

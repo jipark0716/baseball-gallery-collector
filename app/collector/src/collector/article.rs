@@ -28,7 +28,7 @@ static IMAGE_DIR: Lazy<std::path::PathBuf> = Lazy::new(|| {
 
 #[derive(Debug)]
 pub struct Article {
-    number: String,
+    pub id: u64,
     timestamp: DateTime<Utc>,
     author: String,
     subject: String,
@@ -54,65 +54,76 @@ impl CollectArticleErr {
     }
 }
 
-pub async fn collect_article(meta: &PageMeta) -> Result<Article, Box<dyn std::error::Error>> {
+pub async fn collect_article(meta: PageMeta) -> Result<Article, Box<dyn std::error::Error>> {
     let PageMeta {
-        number: page_number,
+        id: page_id,
         ..
     } = meta;
-
-    let (html, referer) = http_page(page_number).await?;
-    let dom = scraper::Html::parse_document(&html);
-
-    let created_sl = dom.select(&CREATED_SELECTOR).next();
-    let author_sl = dom.select(&AUTHOR_SELECTOR).next();
-    let subject_sl = dom.select(&SUBJECT_SELECTOR).next();
-    let content_sl = dom.select(&CONTENT_SELECTOR).next();
-
-    let created_el = match created_sl {
-        Some(v) => v,
-        None => return Err(Box::new(CollectArticleErr::new("not found created_el"))),
-    };
-    let author_el = match author_sl {
-        Some(v) => v,
-        None => return Err(Box::new(CollectArticleErr::new("not found author_el"))),
-    };
-    let subject_el = match subject_sl {
-        Some(v) => v,
-        None => return Err(Box::new(CollectArticleErr::new("not found subject_el"))),
-    };
-    let content_el = match content_sl {
-        Some(v) => v,
-        None => return Err(Box::new(CollectArticleErr::new("not found content_el"))),
-    };
-
-    Ok(Article {
-        number: page_number.to_string(),
-        timestamp: Utc::now(), // todo date parse
-        author: author_el.text().collect::<String>(),
-        subject: subject_el.text().collect::<String>(),
-        content: content_el
-            .text()
-            .collect::<String>()
-            .replace("\n", "")
-            .replace("\t", ""),
-        attach: collect_attach(content_el, &referer).await?,
-    })
-}
-
-async fn collect_attach(element: ElementRef<'_>, referer: &str) -> Result<Vec<Attach>, Box<dyn std::error::Error>> {
-    let mut result = Vec::<Attach>::new();
     
-    for img_el in element.select(&IMG_SELECTOR) {
-        let Some(src) = img_el.value().attr("src") else { continue; };
-        let path = save_to_attach(src, referer).await?;
+    let (author, subject, content, attach_srcs, referer) = {
+        let (html, referer) = http_page(page_id).await?;
+        let dom = scraper::Html::parse_document(&html);
+        
+        let created_sl = dom.select(&CREATED_SELECTOR).next();
+        let author_sl = dom.select(&AUTHOR_SELECTOR).next();
+        let subject_sl = dom.select(&SUBJECT_SELECTOR).next();
+        let content_sl = dom.select(&CONTENT_SELECTOR).next();
 
-        result.push(Attach {
+        let created_el = match created_sl {
+            Some(v) => v,
+            None => return Err(Box::new(CollectArticleErr::new("not found created_el"))),
+        };
+        let author_el = match author_sl {
+            Some(v) => v,
+            None => return Err(Box::new(CollectArticleErr::new("not found author_el"))),
+        };
+        let subject_el = match subject_sl {
+            Some(v) => v,
+            None => return Err(Box::new(CollectArticleErr::new("not found subject_el"))),
+        };
+        let content_el = match content_sl {
+            Some(v) => v,
+            None => return Err(Box::new(CollectArticleErr::new("not found content_el"))),
+        };
+
+        (
+            author_el.text().collect::<String>(),
+            subject_el.text().collect::<String>(),
+            content_el.text().collect::<String>().replace("\n", "").replace("\t", ""),
+            collect_attach(content_el),
+            referer
+        )
+    };
+
+    let mut attach = Vec::<Attach>::new();
+    for src in attach_srcs {
+        let path = save_to_attach(&src, &referer).await?;
+        attach.push(Attach {
             origin_src: src.to_string(),
             copied_path: path,
         });
     }
+
+    Ok(Article {
+        id: page_id,
+        timestamp: Utc::now(),
+        author,
+        subject,
+        content,
+        attach,
+    })
+}
+
+fn collect_attach(element: ElementRef<'_>) -> Vec<String> {
+    let mut result = Vec::<String>::new();
     
-    Ok(result)
+    for img_el in element.select(&IMG_SELECTOR) {
+        let Some(src) = img_el.value().attr("src") else { continue; };
+
+        result.push(src.to_string());
+    }
+    
+    result
 }
 
 async fn save_to_attach(
@@ -156,7 +167,7 @@ fn extract_ext_from_cd(headers: &reqwest::header::HeaderMap) -> String {
         .unwrap_or_else(|| "jpg".to_string())
 }
 
-async fn http_page(page_number: &String) -> Result<(String, String), Box<dyn std::error::Error>> {
+async fn http_page(page_number: u64) -> Result<(String, String), Box<dyn std::error::Error>> {
     let url = format!(
         "https://gall.dcinside.com/board/view/?id=baseball_new13&no={page_number}&page=1"
     );

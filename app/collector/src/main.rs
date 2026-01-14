@@ -6,16 +6,16 @@ use futures::future;
 async fn main() -> std::io::Result<()> {
     let metas = collector::collect_list().await.unwrap();
 
-    // let articles = future::try_join_all(metas.iter().map(|meta| collector::collect_article(meta)))
-    //     .await
-    //     .unwrap();
-    //
-    // println!("{:#?}", articles);
+    let articles = future::try_join_all(metas.into_iter().map(|meta| collector::collect_article(meta)))
+        .await
+        .unwrap();
 
-    for meta in metas {
-        let article = collector::collect_article(&meta).await.unwrap();
-        println!("{:#?}", article);
-    }
+    println!("{:#?}", articles);
+
+    // for meta in metas {
+    //     let article = collector::collect_article(meta).await.unwrap();
+    //     println!("{:#?}", article);
+    // }
 
     Ok(())
 }
