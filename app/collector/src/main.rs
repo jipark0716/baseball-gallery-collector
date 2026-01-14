@@ -1,21 +1,23 @@
-mod collector;
+use util::shutdown::AsyncShutdown;
 
-use futures::future;
+mod collector;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let metas = collector::collect_list().await.unwrap();
+    let handle= collector::Collector::spawn_collectors().await.unwrap();
+    println!("Collector started");
 
-    let articles = future::try_join_all(metas.into_iter().map(|meta| collector::collect_article(meta)))
-        .await
-        .unwrap();
-
-    println!("{:#?}", articles);
-
-    // for meta in metas {
-    //     let article = collector::collect_article(meta).await.unwrap();
-    //     println!("{:#?}", article);
-    // }
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {}
+        _ = async {
+            use tokio::signal::unix::{signal, SignalKind};
+            let mut sigterm = signal(SignalKind::terminate()).unwrap();
+            sigterm.recv().await;
+        } => {}
+    }
+    println!("shutdown started");
+    handle.shutdown().await.unwrap();
+    println!("shutdown end");
 
     Ok(())
 }

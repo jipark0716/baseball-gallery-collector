@@ -29,17 +29,17 @@ static IMAGE_DIR: Lazy<std::path::PathBuf> = Lazy::new(|| {
 #[derive(Debug)]
 pub struct Article {
     pub id: u64,
-    timestamp: DateTime<Utc>,
-    author: String,
-    subject: String,
-    content: String,
-    attach: Vec<Attach>,
+    pub timestamp: DateTime<Utc>,
+    pub author: String,
+    pub subject: String,
+    pub content: String,
+    pub attach: Vec<Attach>,
 }
 
 #[derive(Debug)]
 pub struct Attach {
-    origin_src: String,
-    copied_path: std::path::PathBuf,
+    pub origin_src: String,
+    pub copied_path: std::path::PathBuf,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -59,11 +59,11 @@ pub async fn collect_article(meta: PageMeta) -> Result<Article, Box<dyn std::err
         id: page_id,
         ..
     } = meta;
-    
+
     let (author, subject, content, attach_srcs, referer) = {
         let (html, referer) = http_page(page_id).await?;
         let dom = scraper::Html::parse_document(&html);
-        
+
         let created_sl = dom.select(&CREATED_SELECTOR).next();
         let author_sl = dom.select(&AUTHOR_SELECTOR).next();
         let subject_sl = dom.select(&SUBJECT_SELECTOR).next();
