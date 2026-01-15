@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::thread::sleep;
 use std::time::Duration;
 use tokio_stream::StreamExt;
 use crate::collector::board::PageMeta;
@@ -43,7 +44,7 @@ impl Collector {
 }
 
 async fn collect_deleted_articles(mut rx: tokio::sync::broadcast::Receiver<()>) {
-    let mut interval = tokio::time::interval(Duration::from_secs(20));
+    let mut interval = tokio::time::interval(Duration::from_secs(1));
 
     loop {
         tokio::select! {
@@ -67,11 +68,12 @@ async fn collect_save_articles(article_receiver: tokio::sync::mpsc::Receiver<Art
     let chunks = stream.chunks_timeout(1000, Duration::from_millis(500));
     tokio::pin!(chunks);
 
+    println!("save articles start");
+
     while let Some(batch) = chunks.next().await {
         let Some(T) = entity::insert(batch.into_iter()).await.err() else {
             continue;
         };
-        println!("save batch err {T}");
     }
 }
 
@@ -90,7 +92,10 @@ async fn collect_articles_spawn(mut meta_receiver: tokio::sync::mpsc::Receiver<P
             };
 
             if let CollectArticleResult::Article(v) = article {
+                println!("collect success article");
                 article_sender.send(v).await.unwrap();
+            } else {
+                println!("is deleted");
             }
         });
     }
@@ -121,6 +126,7 @@ async fn collect_metas_spawn(meta_sender: tokio::sync::mpsc::Sender<PageMeta>, m
                 println!("collect meta {len}");
                 for meta in metas {
                     meta_sender.send(meta).await.unwrap();
+                    tokio::time::sleep(Duration::from_millis(200)).await;
                 }
             } => {}
         }

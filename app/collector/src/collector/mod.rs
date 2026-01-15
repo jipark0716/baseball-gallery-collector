@@ -12,6 +12,7 @@ use reqwest::Client;
 pub use board::collect_list;
 pub use article::collect_article;
 pub use scheduler::Collector;
+pub use delete::collect_delete;
 
 pub static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
     Client::builder()

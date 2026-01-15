@@ -7,9 +7,8 @@ use std::time::Duration;
 const TABLE_NAME: &str = "article";
 pub async fn get_monitor_target() -> anyhow::Result<Vec<article::Article>> {
     let rows = CLICKHOUSE_CLIENT
-        .query("SELECT ?fields FROM ? WHERE timestamp > ? AND id not in(select id from ?)")
+        .query("SELECT ?fields FROM ? WHERE id > (select max(id) from ?) order by id desc")
         .bind(Identifier(TABLE_NAME))
-        .bind((Utc::now() - Duration::from_secs(60 * 60 * 2)).format("%Y-%m-%dT%H:%M:%S%.6f").to_string()) // todo format 어케해야함
         .bind(Identifier(delete_entity::TABLE_NAME))
         .fetch_all::<Article>().await?;
 

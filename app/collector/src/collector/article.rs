@@ -45,11 +45,13 @@ pub struct Attach {
     pub copied_path: std::path::PathBuf,
 }
 
+#[derive(Debug)]
 pub enum CollectArticleResult {
     Article(Article),
     DeletedArticle(DeletedArticle),
 }
 
+#[derive(Debug)]
 pub struct DeletedArticle {
     pub id: u64,
     pub timestamp: DateTime<Utc>,
@@ -87,7 +89,7 @@ pub async fn collect_article(meta: PageMeta) -> anyhow::Result<CollectArticleRes
 
     let (code, html, referer) = http_page(page_id).await?;
 
-    if code == StatusCode::NOT_FOUND || html.len() > 0 {
+    if code == StatusCode::NOT_FOUND || html.len() == 0 {
         return Ok(
             DeletedArticle {
                 id: page_id,
@@ -219,9 +221,12 @@ async fn http_page(page_number: u64) -> anyhow::Result<(StatusCode, String, Stri
     let status = response.status();
     let response_body = response.text().await?;
 
-    let log = response_body.as_str().chars().take(30).collect::<String>();
+    if response_body.len() == 0 {
+        panic!("차단당했나???? {}", response_body);
+    }
 
-    println!("id {} ,body: {}...", page_number, log);
+    // let log = response_body.as_str().chars().take(30).collect::<String>();
+    // println!("{} {} {}", status, url, log);
 
     Ok((status, response_body, url))
 }
