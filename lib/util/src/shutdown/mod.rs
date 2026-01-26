@@ -1,8 +1,23 @@
+#[async_trait::async_trait]
 pub trait Shutdown {
-    fn shutdown(&self);
+    async fn shutdown(self);
 }
 
 #[async_trait::async_trait]
-pub trait AsyncShutdown {
-    async fn shutdown(self) -> Result<(), Box<dyn std::error::Error>>;
+pub trait ShutdownExtension {
+    async fn listen(self);
+}
+
+#[async_trait::async_trait]
+impl<T> ShutdownExtension for T
+where
+    T: Shutdown + Sync + Send,
+{
+    async fn listen(self) {
+        tokio::select! {
+           _ = tokio::signal::ctrl_c() => {}
+        }
+
+        self.shutdown().await;
+    }
 }
